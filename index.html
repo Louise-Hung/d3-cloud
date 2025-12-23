@@ -13,61 +13,153 @@
       }
 
       .container {
-        max-width: 1100px;
+        max-width: 1200px;
         margin: 0 auto;
         padding: 24px 24px 40px;
-        text-align: center;
       }
 
-      #cloud {
-        width: 100%;
-        min-height: 520px;
+      .layout {
+        display: flex;
+        gap: 24px;
+        align-items: flex-start;
       }
 
       .controls {
-        margin-top: 24px;
+        width: 280px;
+        flex-shrink: 0;
       }
 
-      .controls label {
+      .controls h2 {
+        font-size: 18px;
+        margin: 0 0 16px;
+      }
+
+      .control-group {
+        margin-bottom: 16px;
+      }
+
+      .control-group label {
         display: block;
         font-weight: 600;
-        margin-bottom: 12px;
+        margin-bottom: 6px;
+        font-size: 14px;
       }
 
-      textarea {
+      .control-group input,
+      .control-group select,
+      .control-group textarea {
         width: 100%;
-        min-height: 140px;
         font-size: 14px;
-        padding: 12px;
+        padding: 8px;
         border: 1px solid #333;
         border-radius: 2px;
-        resize: vertical;
         box-sizing: border-box;
       }
 
+      .control-inline {
+        display: flex;
+        gap: 8px;
+      }
+
+      .control-inline input {
+        width: 100%;
+      }
+
+      textarea {
+        min-height: 140px;
+        resize: vertical;
+      }
+
       button {
-        margin-top: 12px;
+        margin-top: 8px;
         padding: 10px 18px;
         font-size: 16px;
         border: 2px solid #333;
         background: #fff;
         cursor: pointer;
+        width: 100%;
       }
 
       button:hover {
         background: #f2f2f2;
       }
+
+      #cloud {
+        flex: 1;
+        min-height: 520px;
+      }
+
+      @media (max-width: 900px) {
+        .layout {
+          flex-direction: column;
+        }
+
+        .controls {
+          width: 100%;
+        }
+      }
     </style>
   </head>
   <body>
     <main class="container">
-      <div id="cloud" aria-live="polite"></div>
-      <div class="controls">
-        <label for="text-input">Paste your text below!</label>
-        <textarea id="text-input"></textarea>
-        <div>
-          <button id="go" type="button">Go!</button>
-        </div>
+      <div class="layout">
+        <aside class="controls">
+          <h2>Customize</h2>
+          <div class="control-group">
+            <label for="text-input">Paste your text</label>
+            <textarea id="text-input"></textarea>
+            <button id="go" type="button">Go!</button>
+          </div>
+          <div class="control-group">
+            <label for="font-select">Font</label>
+            <select id="font-select">
+              <option value="Helvetica Neue">Helvetica Neue</option>
+              <option value="Arial">Arial</option>
+              <option value="Georgia">Georgia</option>
+              <option value="Times New Roman">Times New Roman</option>
+              <option value="Courier New">Courier New</option>
+              <option value="Impact">Impact</option>
+            </select>
+          </div>
+          <div class="control-group">
+            <label>Font size range</label>
+            <div class="control-inline">
+              <input id="font-size-min" type="number" min="5" max="120" value="16" />
+              <input id="font-size-max" type="number" min="10" max="160" value="96" />
+            </div>
+          </div>
+          <div class="control-group">
+            <label>Rotate range (deg)</label>
+            <div class="control-inline">
+              <input id="rotate-min" type="number" min="-180" max="180" value="-90" />
+              <input id="rotate-max" type="number" min="-180" max="180" value="90" />
+            </div>
+          </div>
+          <div class="control-group">
+            <label for="orientation-count">Orientations</label>
+            <input id="orientation-count" type="number" min="1" max="10" value="5" />
+          </div>
+          <div class="control-group">
+            <label for="padding-input">Padding</label>
+            <input id="padding-input" type="number" min="0" max="20" value="2" />
+          </div>
+          <div class="control-group">
+            <label for="spiral-select">Spiral</label>
+            <select id="spiral-select">
+              <option value="archimedean">archimedean</option>
+              <option value="rectangular">rectangular</option>
+            </select>
+          </div>
+          <div class="control-group">
+            <label for="scale-select">Scale</label>
+            <select id="scale-select">
+              <option value="linear">linear</option>
+              <option value="log">log</option>
+              <option value="sqrt">sqrt</option>
+            </select>
+          </div>
+        </aside>
+        <div id="cloud" aria-live="polite"></div>
       </div>
     </main>
 
@@ -78,6 +170,15 @@
         var container = d3.select("#cloud");
         var textInput = document.getElementById("text-input");
         var goButton = document.getElementById("go");
+        var fontSelect = document.getElementById("font-select");
+        var fontSizeMin = document.getElementById("font-size-min");
+        var fontSizeMax = document.getElementById("font-size-max");
+        var rotateMin = document.getElementById("rotate-min");
+        var rotateMax = document.getElementById("rotate-max");
+        var orientationCount = document.getElementById("orientation-count");
+        var paddingInput = document.getElementById("padding-input");
+        var spiralSelect = document.getElementById("spiral-select");
+        var scaleSelect = document.getElementById("scale-select");
         var width = Math.min(1100, container.node().clientWidth || 960);
         var height = 520;
 
@@ -91,6 +192,11 @@
           "implementation work fine tuning bounding boxes words";
 
         textInput.value = sampleText;
+
+        function clampNumber(value, fallback) {
+          var number = parseFloat(value);
+          return Number.isFinite(number) ? number : fallback;
+        }
 
         function computeWords(text) {
           var counts = Object.create(null);
@@ -114,15 +220,27 @@
             return entry.value;
           });
 
-          var sizeScale = d3.scale
-            .linear()
-            .domain([d3.min(values), d3.max(values)])
-            .range([16, 96]);
+          var scaleType = scaleSelect.value;
+          var sizeMin = clampNumber(fontSizeMin.value, 16);
+          var sizeMax = clampNumber(fontSizeMax.value, 96);
+          var minValue = d3.min(values);
+          var maxValue = d3.max(values);
+          var sizeScale;
+
+          if (scaleType === "log") {
+            sizeScale = d3.scale.log();
+          } else if (scaleType === "sqrt") {
+            sizeScale = d3.scale.sqrt();
+          } else {
+            sizeScale = d3.scale.linear();
+          }
+
+          sizeScale.domain([Math.max(1, minValue), maxValue]).range([sizeMin, sizeMax]);
 
           return entries.map(function (entry) {
             return {
               text: entry.text,
-              size: sizeScale(entry.value),
+              size: sizeScale(Math.max(1, entry.value)),
             };
           });
         }
@@ -144,7 +262,7 @@
             .style("font-size", function (d) {
               return d.size + "px";
             })
-            .style("font-family", "Helvetica Neue, Arial, sans-serif")
+            .style("font-family", fontSelect.value + ", Arial, sans-serif")
             .style("fill", function (d, i) {
               return palette(i);
             })
@@ -157,6 +275,20 @@
             });
         }
 
+        function randomRotation() {
+          var rotateFrom = clampNumber(rotateMin.value, -90);
+          var rotateTo = clampNumber(rotateMax.value, 90);
+          var orientations = Math.max(1, Math.round(clampNumber(orientationCount.value, 1)));
+
+          if (orientations === 1 || rotateFrom === rotateTo) {
+            return rotateFrom;
+          }
+
+          var step = (rotateTo - rotateFrom) / (orientations - 1);
+          var slot = Math.floor(Math.random() * orientations);
+          return rotateFrom + step * slot;
+        }
+
         function buildCloud() {
           width = Math.min(1100, container.node().clientWidth || 960);
           var words = computeWords(textInput.value || "word cloud");
@@ -164,19 +296,31 @@
             .cloud()
             .size([width, height])
             .words(words)
-            .padding(2)
-            .rotate(function () {
-              return Math.random() > 0.5 ? 90 : 0;
-            })
-            .font("Helvetica Neue")
+            .padding(Math.max(0, clampNumber(paddingInput.value, 2)))
+            .rotate(randomRotation)
+            .font(fontSelect.value)
             .fontSize(function (d) {
               return d.size;
             })
+            .spiral(spiralSelect.value)
             .on("end", draw)
             .start();
         }
 
         goButton.addEventListener("click", buildCloud);
+        [
+          fontSelect,
+          fontSizeMin,
+          fontSizeMax,
+          rotateMin,
+          rotateMax,
+          orientationCount,
+          paddingInput,
+          spiralSelect,
+          scaleSelect,
+        ].forEach(function (control) {
+          control.addEventListener("change", buildCloud);
+        });
         window.addEventListener("resize", function () {
           clearTimeout(window.__cloudResizeTimer);
           window.__cloudResizeTimer = setTimeout(buildCloud, 200);
